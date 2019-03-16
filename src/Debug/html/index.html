@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>HybridDebug</title>
+
+    <link rel="stylesheet" type="text/css" href="./css/iview.css">
+    <link rel="stylesheet" type="text/css" href="./css/index.css">
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="../../../node_modules/monaco-editor/min/vs/editor/editor.main.css">
+    <script type="text/javascript" src="./js/socket.io.min.js"></script>
+    <script type="text/javascript" src="./js/vue.js"></script>
+    <script type="text/javascript" src="./js/iview.min.js"></script>
+    <script type="text/javascript" src="./js/main.js"></script>
+    <script>
+        var require = {
+            paths: {
+                'vs': '../../../node_modules/monaco-editor/min/vs'
+            }
+        };
+    </script>
+    <script src="../../../node_modules/monaco-editor/min/vs/loader.js"></script>
+    <script src="../../../node_modules/monaco-editor/min/vs/editor/editor.main.nls.js"></script>
+    <script src="../../../node_modules/monaco-editor/min/vs/editor/editor.main.js"></script>
+</head>
+<body>
+    <div id = "title">HybridDebug工具</div>
+    <div id = "center">
+        <div class = "workingSection" style = "width: 36%;margin-left: 4px;">
+            <div id="infoForm" style = "flex: 1;">
+                <i-table stripe border :columns="desc" :data="infos">
+                    <template slot-scope="{index}" slot="action">
+                        <i-select v-if="index == 1" :placeholder="defaultUniqueName" style="flex: 1" :on-change = "didSelectedUniqueName()" v-model="selectedUniqueName">
+                            <i-option v-for="item in uniqueNameList" :value="item" :key="item">{{item}}</i-ption>
+                        </i-select>
+                        <i-select v-if="index == 2" :placeholder="defaultCompileFolderName" style="flex: 1" :on-change="didSelectedCompileProjectName()"
+                            v-model="selectedCompileFolderName">
+                            <i-option v-for="item in compileProjectList" :value="item" :key="item">{{item}}</i-ption>
+                        </i-select>
+                    </template>
+                </i-table>
+                <div style = "display: flex;">
+                    <i-input style="margin-top: 4px;" :autofocus="false" :rows="6" v-model="compilerLog" type="textarea" placeholder="日志输出区" >
+                    </i-input>
+                </div>
+
+                <div style = "width: 100%;height: auto;display: flex;flex-direction: row;flex-wrap: wrap;">
+                    <div style="margin-top:4px;width: 46%;margin-left: 4px;">
+                        <i-button type="primary" class="actionButton" @click="compileCodes()">编译源码</i-button>
+                    </div>
+                    <div style="margin-top:4px;width: 46%;margin-left: 4px;">
+                        <i-button type="primary" class="actionButton" @click="reloadApp()">刷新App</i-button>
+                    </div>
+                    <div style ="margin-top:4px;width: 46%;margin-left: 4px;">
+                        <i-button type="primary" class="actionButton" @click="changeMobileAppName()">设置当前App名字</i-button>
+                    </div>
+                    <div style ="margin-top:4px;width: 46%;margin-left: 4px;">
+                        <i-button type="primary" class="actionButton" @click="reloadZip()">重装Zip包</i-button>
+                    </div>
+                </div>
+                <div style ="margin-top:4px;">
+                    <i-button type="primary" class="actionButton" @click="uploadZip()">上传Zip包</i-button>
+                </div>
+            </div>
+        </div>
+        <div class="workingSection" style="display: flex;flex: 1;width: 64%;margin-left: 10px">
+            <div id="container" style = "flex: 1;width: 100%;"></div>
+            <i-button type="success" @click="runScript()" class="actionButton" style="margin-top: 2px;">Run</i-button>
+            <i-input style="margin-top: 2px;" :autofocus="false" :rows="6" v-model="scriptLog" type="textarea"
+            placeholder="JavaScript打印区" >
+            </i-input>
+        </div>
+    </div>
+</body>
+</html>

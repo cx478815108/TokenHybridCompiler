@@ -1,0 +1,22 @@
+{
+    "name": "projectcompiler",
+    "version": "1.0.0",
+    "description": "hybrid compiler",
+    "author": "cx",
+    "license": "MIT",
+    "dependencies": {
+        "ali-oss": "^6.1.0",
+        "blueimp-md5": "^2.10.0",
+        "crypto": "^1.0.1",
+        "css-select": "^2.0.2",
+        "css-tree": "^1.0.0-alpha.29",
+        "engine.io": "^3.3.2",
+        "express": "^4.16.4",
+        "htmlparser2": "^3.10.0",
+        "jszip": "^3.2.0",
+        "monaco-editor": "^0.15.6",
+        "net": "^1.0.2",
+        "open": "0.0.5",
+        "socket.io": "^2.2.0"
+    }
+}

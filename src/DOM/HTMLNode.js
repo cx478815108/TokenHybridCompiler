@@ -68,6 +68,7 @@ const TokenInstructions = {
     for      : "t:for"
 }
 
+// contentMode
 const TokenViewModeMap = {
     "scaleToFill"    : 0,
     "scaleAspectFit" : 1,
@@ -82,6 +83,73 @@ const TokenViewModeMap = {
     "topRight"       : 10,
     "bottomLeft"     : 11,
     "bottomRight"    : 12,
+}
+
+// borderStyle UITextField 的边框类型
+const TokenTextBorderStyleMap = {
+    "none":0,
+    "line":1,
+    "bezel":2,
+    "roundedRect":3
+}
+
+// keyboardType UITextField 输入的键盘类型
+const TokenKeyboardTypeMap = {
+    "default":0,
+    "ascii":1,
+    "numbers":2,
+    "emailaddress":7,
+    "decimalpad":8,
+    "websearch":10,
+}
+
+// colorModeType UITextField 键盘颜色类型
+const TokenKeyboardColorModeMap = {
+    "default":0,
+    "dark":1,
+    "light":2,
+}
+
+// returnType UITextField 返回键按钮类型
+const TokenKeyboardReturnMap = {
+    "default":0,
+    "go":1,
+    "google":2,
+    "join":3,
+    "next":4,
+    "route":5,
+    "search":6,
+    "send":7,
+    "yahoo":8,
+    "done":9,
+    "emergencycall":10,
+    "continue":10
+}
+
+// rightType UITableViewCell右边小视图的类型
+const TokenCellRightTypeMap = {
+    "none":0,
+    "indicator":1,
+    "detaildisclosure":2,
+    "checkmark":3,
+    "detail":4
+}
+
+// align  UITextField 的对其类型
+const TokenInputAlignMap = {
+    "left":0,
+    "center":1,
+    "right":2
+}
+
+const TokenReflectMap = {
+    "contentMode":TokenViewModeMap,
+    "borderStyle":TokenTextBorderStyleMap,
+    "keyboardType":TokenKeyboardTypeMap,
+    "colorModeType":TokenKeyboardColorModeMap,
+    "returnType":TokenKeyboardReturnMap,
+    "rightType":TokenCellRightTypeMap,
+    "align":TokenInputAlignMap,
 }
 
 class HTMLNode{
@@ -140,9 +208,15 @@ class HTMLNode{
             delete(attrs['@click']);
         }
 
-        const contentMode = attrs['contentMode'];
-        if (contentMode) {
-            attrs['contentMode'] = '' + TokenViewModeMap[contentMode];
+        // 对数据进行映射 roundedRect -> 3
+        for (const key in TokenReflectMap) {
+            if (TokenReflectMap.hasOwnProperty(key)) {
+                const map = TokenReflectMap[key];
+                const val = attrs[key];
+                if (val) {
+                    attrs[key] = '' + map[val];
+                }
+            }
         }
 
         if (attrs[TokenInstructions.bind]) {
@@ -160,6 +234,18 @@ class HTMLNode{
             this.isForNode = true;
             // 解析for 循环
             this.forLoop = Util.parseForString(tableExp);
+        }
+
+        for (const key in attrs) {
+            if (attrs.hasOwnProperty(key)) {
+                const val = "" + attrs[key];
+                if (val === "true") {
+                    attrs[key] = "1";
+                }
+                else if (val === "false"){
+                    attrs[key] = "0";
+                }
+            }
         }
 
         this.attributes = attrs;

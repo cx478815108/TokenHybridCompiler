@@ -74,9 +74,7 @@ class Compiler {
     }
 
     saveProduction(data) {
-
-        const productionJSONmd5 = md5Sign(data.toString());
-        
+        const productionJSONmd5 = md5Sign(JSON.stringify(data));
         const projectInfo = Projects.getDefaultProjectInfo();
         
         //保存config.json

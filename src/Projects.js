@@ -1,5 +1,8 @@
-const fs = require('fs');
-const ProjectConfigJSONPath = __dirname.replace("src","project.json");
+const fs   = require('fs');
+const path = require("path");
+
+const ProjectConfigJSONPath = path.normalize(__dirname.replace("src","project.json"));
+
 if (!fs.existsSync(ProjectConfigJSONPath)) {
     throw '未配置工程文件，请在根目录下新建project.json 文件';
 }
@@ -8,13 +11,13 @@ const Projects = {
     projects:{},
     currentProjectId:'',
     loadProjectInfo(){
-        const ProductionPath = __dirname.replace('src', 'production/');
+        const ProductionPath = path.normalize(__dirname.replace('src', 'production/'));
         if (!fs.existsSync(ProductionPath)) {
             fs.mkdirSync(ProductionPath);
         }
 
         // 读取配置文件
-        const ProjectRootPath = ProjectConfigJSONPath.replace("project.json", "");
+        const ProjectRootPath = path.normalize(ProjectConfigJSONPath.replace("project.json", ""));
         const data = fs.readFileSync(ProjectConfigJSONPath);
         const configJSON = JSON.parse(data.toString());
         this.currentProjectId = configJSON.currentProject;
@@ -27,6 +30,7 @@ const Projects = {
             info.projectFolderName = item.projectFolderName;
             info.version = item.version;
             info.projectFolderPath = __dirname.replace('src', info.projectFolderName + '/');
+            info.projectFolderPath = path.normalize(info.projectFolderPath);
             info.entryHTMLPath = info.projectFolderPath + info.entryHTMLName;
             info.configJSONPath = info.projectFolderPath + 'config.json';
             info.productionPath = ProductionPath;

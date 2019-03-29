@@ -7,6 +7,7 @@ const DOMAnalyse   = require('./DOMAnalyse');
 const Zip          = require('./Zip');
 const JSZip        = require('JSZip');
 const Projects     = require('./Projects');
+const path         = require("path");
 const Crypto = require('crypto');
 
 const md5Sign = function (data) {
@@ -80,7 +81,8 @@ class Compiler {
         //保存config.json
         const configJSONPath = projectInfo.configJSONPath;
         const configJSON = fs.readFileSync(configJSONPath).toString();
-        fs.writeFileSync(projectInfo.productionPath + '/config.json', configJSON);
+        const targetPath = path.normalize(projectInfo.productionPath + '/config.json');
+        fs.writeFileSync(targetPath, configJSON);
 
         const configJSONMD5 = md5Sign(configJSON);
 
@@ -95,8 +97,7 @@ class Compiler {
         let jsFilesMD5 = "";
         const jsData = {};
         jsFiles.forEach((t)=>{
-            const components = t.split('/');
-            const fileName = components[components.length - 1];
+            const fileName = path.basename(t,".js") + ".js";
             const content = fs.readFileSync(t).toString();
             const outputPath = `${projectInfo.productionPath}${fileName}`;
             fs.writeFileSync(outputPath,content);
@@ -129,7 +130,8 @@ class Compiler {
             newProductionJSON['md5'] = targetMD5;
 
             // 保存production.json
-            fs.writeFileSync(projectInfo.productionPath + '/production.json', JSON.stringify(newProductionJSON));
+            const targetPath = path.normalize(projectInfo.productionPath + '/production.json');
+            fs.writeFileSync(targetPath, JSON.stringify(newProductionJSON));
 
             const destinationPath = `${projectInfo.productionPath}${projectInfo.zipName}.zip`;
             fs.writeFile(destinationPath, content, function (err) {
@@ -171,10 +173,10 @@ class Compiler {
         }
     }
 
-    produceModulesInfo(path) {
+    produceModulesInfo(filePath) {
         let r = [];
-        fs.readdirSync(path).map((v) => {
-            return path + '/' + v;
+        fs.readdirSync(filePath).map((v) => {
+            return path.normalize(filePath + path.sep + v);
         }).forEach((subPath) => {
             if (fs.lstatSync(subPath).isDirectory()) {
                 r = r.concat(this.produceModulesInfo(subPath));
@@ -191,24 +193,22 @@ class Compiler {
             htmlModule: []
         };
         list.forEach((v) => {
-            const start = v.lastIndexOf('/');
-            const fileName = v.substr(start + 1, v.length - start).split('.')[0];
-            const module = {
+            const fileName = path.basename(v).split('.')[0];
+            const modules = {
                 fileName
             };
-            module.path = v;
+            modules.path = v;
             if (v.endsWith('.css')) {
-                r.cssModule.push(module);
+                r.cssModule.push(modules);
             }
             if (v.endsWith('.html')) {
                 if (v !== this.entryPath) {
-                    r.htmlModule.push(module);
+                    r.htmlModule.push(modules);
                 }
             }
         });
         return r;
     }
-
 
     loadTextFile(path) {
         return fs.readFileSync(path).toString();

@@ -5,6 +5,7 @@ const os     = require('os');
 const open   = require('open');
 const net    = require('net');
 const Upload = require('./Upload');
+const Path   = require("path");
 
 const WbSocketEventNameAction = 'Action';
 
@@ -111,7 +112,9 @@ class Utils{
     }
     
     getConfigJSONPath(){
-        return __dirname.replace("/src/Debug", "/project.json");
+        const t = Path.sep;
+        const r = Path.normalize(__dirname.replace(`${t}src${t}Debug`, "/project.json"));
+        return r;
     }
 
     getCurrentZipPath(){
@@ -120,12 +123,15 @@ class Utils{
             this.reloadProjectJSON();
             zipName = this.configJSON.AppUniqueName;
         }
-        return __dirname.replace("/src/Debug", `/production/${zipName}.zip`);
+        const t = Path.sep;
+        const r = Path.normalize(__dirname.replace(`${t}src${t}Debug`, `/production/${zipName}.zip`));
+        return r;
     }
 
     compileSourceCode(finish){
         const spawn = require('child_process').spawn;
-        const path = __dirname.replace("/Debug", "/main.js");
+        const t = Path.sep;
+        const path = __dirname.replace(`${t}Debug`, "/main.js");
 
         const child = spawn("node", [path, this.selectedProjectName], {
             stdio: ['pipe']

@@ -5,7 +5,7 @@ const os     = require('os');
 const open   = require('open');
 const net    = require('net');
 const Upload = require('./Upload');
-const Path   = require("path");
+const ProjectUtil = require('../ProjectUtil');
 
 const WbSocketEventNameAction = 'Action';
 
@@ -60,33 +60,13 @@ const SocketMessageMaker = (type,message,data) =>{
 class Utils{
     constructor(){
         this.ipAddress = "";
-        this.selectedUnqiqueName = "";
-        this.selectedProjectName = "";
-        this.configJSON = {};
+        this.projectUtil = new ProjectUtil();
+    }
+
+    getCompileProjectNames(){
+        return this.projectUtil.projectNames;
     }
     
-    getReloadAppNames(){
-        this.reloadProjectJSON();
-        const list = this.configJSON.debugReloadZipNames;
-        return Array.isArray(list) ? list : [];
-    }
-    
-    getCompileProjectNames() {
-        this.reloadProjectJSON();
-        const list = this.configJSON.debugCompileProjects;
-        return Array.isArray(list) ? list : [];
-    }
-
-    getAppUniqueName(){
-        if(this.selectedUnqiqueName.length){
-            return this.selectedUnqiqueName;
-        }
-        this.reloadProjectJSON();
-
-        const projectInfo = this.configJSON.projects[0];
-        return projectInfo.exportZipName;
-    }
-
     getIPAdress(){
         if (!this.ipAddress) {
             const interfaces = os.networkInterfaces();
@@ -104,36 +84,11 @@ class Utils{
         return this.ipAddress;
     }
 
-    reloadProjectJSON(){
-        const path = this.getConfigJSONPath();
-        if (fs.existsSync(path)) {
-            this.configJSON = JSON.parse(fs.readFileSync(path).toString());
-        }
-    }
-    
-    getConfigJSONPath(){
-        const t = Path.sep;
-        const r = Path.normalize(__dirname.replace(`${t}src${t}Debug`, "/project.json"));
-        return r;
-    }
-
-    getCurrentZipPath(){
-        let zipName = this.selectedUnqiqueName;
-        if (!zipName.length) {
-            this.reloadProjectJSON();
-            zipName = this.configJSON.AppUniqueName;
-        }
-        const t = Path.sep;
-        const r = Path.normalize(__dirname.replace(`${t}src${t}Debug`, `/production/${zipName}.zip`));
-        return r;
-    }
-
-    compileSourceCode(finish){
+    compileSourceCode(projectName, opinion, finish){
         const spawn = require('child_process').spawn;
-        const t = Path.sep;
-        const path = __dirname.replace(`${t}Debug`, "/main.js");
-
-        const child = spawn("node", [path, this.selectedProjectName], {
+        const mainJSPath = this.projectUtil.mainJSPath;
+        const config = opinion ? JSON.stringify(opinion) : '{}';
+        const child = spawn("node", [mainJSPath, projectName, config], {
             stdio: ['pipe']
         });
         let log = '';
@@ -148,49 +103,52 @@ class Utils{
             if (finish) {
                 finish(log);
             }
+            if(err){
+                finish(JSON.stringify(err));
+            }
         });
     }
 
-    reloadZip(process){
+    reloadZip(projectName, process){
         if (!debug.mobileSocket || !debug.mobileConnected){
             if(process){
                 process("iPhone 未连接");
             }
             return ;
         }
+
+        this.projectUtil.loadProjects();
+        const targetProject = this.projectUtil.projects[projectName];
+        const zipName = targetProject.exportZipName;
     
-        const path = this.getCurrentZipPath();
+        const uploadPath = targetProject.uploadZipPath;
 
         if(process){
-            process("开始传输文件\n" + path);
+            process("开始传输文件\n" + uploadPath);
         }
 
-        const rs = fs.createReadStream(path, {
+        const rs = fs.createReadStream(uploadPath, {
             highWaterMark: 65528
         })
 
-        const self = this;
         rs.on('data', function (chunk) {
-            const name = self.getAppUniqueName();
-            const message = SocketMessageMaker(0,name,chunk);
+            const message = SocketMessageMaker(0,zipName,chunk);
             const buff    = message.getBuff();
             debug.mobileSocket.write(buff);
         });
     
         rs.on('end', function (chunk) {
-            const name = self.getAppUniqueName();
-            const message = SocketMessageMaker(1,name,{"msg":"传送完毕"});
+            const message = SocketMessageMaker(1,zipName,{"msg":"传送完毕"});
             const buff    = message.getBuff();
             debug.mobileSocket.write(buff);
             if(process){
-                process("传送完毕\n" + path);
+                process("传送完毕\n" + uploadPath);
             }
         });
     
         // 监听错误
         rs.on('error', function (err) {
-            const name = self.getAppUniqueName();
-            const message = SocketMessageMaker(1,name,{"msg":"传送发生错误"});
+            const message = SocketMessageMaker(1,zipName,{"msg":"传送发生错误"});
             const buff    = message.getBuff();
             debug.mobileSocket.write(buff);
             if(process){
@@ -214,6 +172,7 @@ class Debug{
         this.mobileConnected = false;
         this.webConnected = false;
         this.uploading = false;
+        this.projectUtil = new ProjectUtil();
     }
 
     alertWeb(text){
@@ -222,18 +181,21 @@ class Debug{
         }
     }
 
+    getProjectInfo(projectName){
+        this.projectUtil.loadProjects();
+        return this.projectUtil.projects[projectName];
+    }
+
     didReceiveWebMessage(info){
-        utils.selectedUnqiqueName = info.zipName;
-        utils.selectedProjectName = info.projectName;
+        const targetProject = this.getProjectInfo(info.projectName);
         const self = this;
         if(info.actionCode == 2019){
             console.log("收到命令：执行脚本");
             if(debug.mobileSocket && this.mobileConnected){
                 //script
-                const name = utils.getAppUniqueName();
                 const MobileMessageRunScriptType = 3;
                 const message = SocketMessageMaker(MobileMessageRunScriptType,
-                                                    name,
+                                                    targetProject.exportZipName,
                                                     {"script":info.script});
                 const buff    = message.getBuff();
                 debug.mobileSocket.write(buff);
@@ -244,37 +206,21 @@ class Debug{
         }
         else if(info.actionCode == 2010){
             console.log("收到命令：重载zip包");
-            utils.reloadZip((log)=>{
+            utils.reloadZip(info.projectName, (log)=>{
                 self.sendWebInformation(log);
             });
         }
         else if(info.actionCode == 2011){
             console.log("收到命令：编译文件");
-            utils.compileSourceCode((log)=>{
+            utils.compileSourceCode(info.projectName, info.compileOpinion, (log)=>{
                 self.sendWebInformation(log);
             });
         }
-        else if(info.actionCode == 2012){
-            console.log("收到命令：改变当前App的名字");
-            if(debug.mobileSocket && this.mobileConnected){
-                const name    = utils.selectedUnqiqueName;
-                const MobileMessageChangeNameType = 2;
-                const message = SocketMessageMaker(MobileMessageChangeNameType,
-                                                    name,
-                                                    {'info':`当前App变更为${name}.zip`});
-                const buff    = message.getBuff();
-                debug.mobileSocket.write(buff);
-            }
-            else {
-                console.log("手机未连接");
-            }
-        }
         else if(info.actionCode == 2013){
             console.log("收到命令：刷新App");
-            const name    = utils.selectedUnqiqueName;
             const MobileMessageChangeNameType = 4;
-            const message = SocketMessageMaker(MobileMessageChangeNameType,
-                                                name,
+            const name = targetProject.exportZipName;
+            const message = SocketMessageMaker(MobileMessageChangeNameType,name,
                                                 {'info':`刷新App为${name}`});
             const buff    = message.getBuff();
             debug.mobileSocket.write(buff);
@@ -284,9 +230,8 @@ class Debug{
                 return;
             }
             this.uploading = true;
-            const name     = utils.getAppUniqueName();
             const upload   = new Upload();
-            upload.uploadZipWithName(name)
+            upload.uploadProject(info.projectName)
             .then((log)=>{
                 this.alertWeb('上传成功');
                 this.uploading = false;
@@ -334,8 +279,8 @@ class Debug{
         // 手机状态
         info.mobileConnect  = this.mobileConnected;
         info.ipAddress      = utils.getIPAdress();
-        info.reloadZipNames = utils.getReloadAppNames();
         info.projectNames   = utils.getCompileProjectNames();
+        info.projectFolderPaths = this.projectUtil.projectFolderPaths;
         this.wbSocket.emit('information',info);
     }
 
@@ -348,10 +293,10 @@ class Debug{
         // 手机状态
         info.mobileConnect  = this.mobileConnected;
         info.ipAddress      = utils.getIPAdress();
-        info.reloadZipNames = utils.getReloadAppNames();
         info.projectNames   = utils.getCompileProjectNames();
         info.textLog        = textLog ? textLog : "";
         info.scriptLog      = scriptLog ? scriptLog : "";
+        info.projectFolderPaths = this.projectUtil.projectFolderPaths;
         this.wbSocket.emit('information',info);
     }
 

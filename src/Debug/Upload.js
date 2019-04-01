@@ -1,7 +1,7 @@
 const OSS      = require('ali-oss');
 const fs       = require('fs');
 const Crypto   = require('crypto');
-const Projects = require('../Projects');
+const ProjectUtil = require('../ProjectUtil');
 
 class Upload{
     constructor(){
@@ -11,22 +11,22 @@ class Upload{
             accessKeySecret: 'O2saNzQ9g7tsrXGq9mgdHwJ7OO2alO',
             bucket: 'tokendynamicapp'
         });
-
-        this.productionPath = __dirname.replace("src/Debug","production/");
-        this.compileToolPath = __dirname.replace("src/Debug","src/main.js");
-        this.md5 = this.fetchTargetMD5();
+        this.projectUtil = new ProjectUtil();
         this.appsJSON = null;
+        this.md5 = '';
+        this.zipName = '';
     }
     
-    compileCode(zipName){
+    compileCode(projectName){
 
-        Projects.loadProjectInfo();
-        const targetProject = Projects.projects[zipName];
+        const targetProject = this.projectUtil.projects[projectName];
         const folderName = targetProject.projectFolderName;
-
+        this.md5 = this.fetchTargetMD5(projectName);
+        this.zipName = targetProject.exportZipName;
+        
         return new Promise((resolve,rejects)=>{
             const spawn = require('child_process').spawn;
-            const path = this.compileToolPath;
+            const path = this.projectUtil.mainJSPath;
     
             const child = spawn("node", [path, folderName], {
                 stdio: ['pipe']
@@ -51,8 +51,9 @@ class Upload{
         });
     }
 
-    fetchTargetMD5(){
-        const jsonPath = this.productionPath + 'production.json';
+    fetchTargetMD5(projectName){
+        const targetProject = this.projectUtil.projects[projectName];
+        const jsonPath = targetProject.productionJSONPath;
         const jsonText = fs.readFileSync(jsonPath).toString();
         return JSON.parse(jsonText).md5;
     }
@@ -71,11 +72,14 @@ class Upload{
         });
     }
 
-    uploadZipFile(zipName){
-        //上传zip 文件
-        const zipFilePath = this.productionPath + zipName + '.zip';
+    uploadZipFile(projectName){
+        // 上传zip 文件
+        const targetProject = this.projectUtil.projects[projectName];
+        const zipName = targetProject.exportZipName;
+        const zipFilePath = targetProject.uploadZipPath;
         const zipDestnationPath = `apps/${zipName}/${zipName}.zip`;
-        const zipPromise = this.client.putStream(zipDestnationPath, fs.createReadStream(zipFilePath));
+        const zipPromise = this.client.putStream(zipDestnationPath,         
+                                            fs.createReadStream(zipFilePath));
 
         const md5DestnationPath = `apps/${zipName}/${zipName}.txt`;
         const md5Buffer = Buffer.from(this.md5);
@@ -84,10 +88,10 @@ class Upload{
         return Promise.all([zipPromise,md5Promise]);
     }
 
-    updateJSON(zipName,json){
-        json[zipName] = {
+    updateJSON(json){
+        json[this.zipName] = {
             md5 : this.md5,
-            uniqueName:zipName
+            uniqueName:this.zipName
         };
 
         // 上传项目的编译信息
@@ -98,11 +102,11 @@ class Upload{
         return jsonPromise;
     }
 
-    uploadZipWithName(zipName){
+    uploadProject(projectName){
         let compileLog = "";
         return new Promise((resolve,rejects)=>{
             // 开始编译
-            this.compileCode(zipName)
+            this.compileCode(projectName)
             .then((log)=>{
                 compileLog = log;
                 // 获取云端列表
@@ -110,11 +114,11 @@ class Upload{
             })
             .then((json)=>{
                 // 上传zip
-                return this.uploadZipFile(zipName);
+                return this.uploadZipFile(projectName);
             })
             .then((wrapperObj)=>{
                 // 更新云端App列表
-                return this.updateJSON(zipName,this.appsJSON);
+                return this.updateJSON(this.appsJSON);
             })
             .then((results)=>{
                 resolve(compileLog);

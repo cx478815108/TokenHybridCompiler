@@ -6,29 +6,51 @@ const CommonStore  = require('./CommonStore');
 const DOMAnalyse   = require('./DOMAnalyse');
 const Zip          = require('./Zip');
 const JSZip        = require('JSZip');
-const Projects     = require('./Projects');
-const path         = require("path");
-const Crypto = require('crypto');
+const ProjectUtil  = require('./ProjectUtil');
+const Path         = require("path");
+const Crypto       = require('crypto');
+const Terser       = require("Terser");
 
 const md5Sign = function (data) {
     var md5 = Crypto.createHash('md5').update(data).digest('hex');
     return md5;
 }
 
-Projects.loadProjectInfo();
+const Project = new ProjectUtil();
 
 class Compiler {
     constructor(){
         this.mainDocument = null;
-        this.styleStore  = new CommonStore();
-        this.layoutStore = new CommonStore();
+        this.styleStore   = new CommonStore();
+        this.layoutStore  = new CommonStore();
+        this.projectInfo  = Project.getDefaultProjectInfo();
+        this.shouldZip    = false;
+
+        if(process.argv.length > 2){
+            const name = process.argv[2];
+            this.projectInfo = Project.projects[name];
+        }
+
+        if(process.argv.length > 3){
+            const configString = process.argv[3];
+            const config = JSON.parse(configString);
+            this.shouldZip = config.zipJS;
+        }
+
+        if(!fs.existsSync(this.projectInfo.rootProductionPath)){
+            fs.mkdirSync(this.projectInfo.rootProductionPath);
+        }
+
+        const outputPath = this.projectInfo.productionFolderPath;
+        if (!fs.existsSync(outputPath)) {
+            fs.mkdirSync(outputPath);
+        }
     }
 
     buildMainNode() {
         console.log("⏳⏳⏳开始编译");
-        const projectInfo = Projects.getDefaultProjectInfo();
-        console.log("当前编译目标",projectInfo);
-        const mainNodeText = this.loadTextFile(projectInfo.entryHTMLPath);
+        console.log("当前编译路径\n",this.projectInfo.projectFolderPath);
+        const mainNodeText = this.loadTextFile(this.projectInfo.entryHTMLPath);
         this.mainDocument = new HTMLDocument();
         this.mainDocument.creat(mainNodeText);
         this.mergeModules();
@@ -76,47 +98,43 @@ class Compiler {
 
     saveProduction(data) {
         const productionJSONmd5 = md5Sign(JSON.stringify(data));
-        const projectInfo = Projects.getDefaultProjectInfo();
+        const projectInfo = this.projectInfo;
         
         //保存config.json
-        const configJSONPath = projectInfo.configJSONPath;
-        const configJSON = fs.readFileSync(configJSONPath).toString();
-        const targetPath = path.normalize(projectInfo.productionPath + '/config.json');
-        fs.writeFileSync(targetPath, configJSON);
+        const configJSON = JSON.stringify(projectInfo.configJSON);
+        fs.writeFileSync(projectInfo.configJSONSavePath, configJSON);
 
         const configJSONMD5 = md5Sign(configJSON);
 
         // 将所有的js 文件保存到 production 文件夹下
         const jsPath = projectInfo.projectFolderPath;
-        const jsFiles = this.produceModulesInfo(jsPath).filter((v)=>{
-            return v.endsWith('.js');
-        }).filter((v)=>{
-            return !v.endsWith('test.js');
+        let jsFiles = this.produceModulesInfo(jsPath).filter((v)=>{
+            return v.endsWith('.js') && v !== projectInfo.entryJSPath;
+        });
+        // 保证enteryJS 首先被执行
+        jsFiles = [projectInfo.entryJSPath,...jsFiles];
+        
+        let zipScript = ''
+        jsFiles.forEach((t)=>{
+            const fileName = Path.basename(t,".js") + ".js";
+            const content = fs.readFileSync(t).toString();
+            // 合并所有的脚本
+            zipScript += content;
         });
 
-        let jsFilesMD5 = "";
-        const jsData = {};
-        jsFiles.forEach((t)=>{
-            const fileName = path.basename(t,".js") + ".js";
-            const content = fs.readFileSync(t).toString();
-            const outputPath = `${projectInfo.productionPath}${fileName}`;
-            fs.writeFileSync(outputPath,content);
-            jsData[fileName] = content;
-            jsFilesMD5 = jsFilesMD5 + md5Sign(content);
-        });
+        if(this.shouldZip){
+            zipScript = Terser.minify(zipScript).code;
+        }
+
+        const jsFilesMD5 = md5Sign(zipScript);
+        const outputPath = Path.join(projectInfo.productionFolderPath,'main.js')
+        fs.writeFileSync(outputPath,zipScript);
 
         console.log("🍺🍺🍺保存至production完毕");
 
         var zip = new JSZip();
         zip.file('config.json', configJSON);
-        
-        let keys = Object.keys(jsData);
-        for (let i = 0; i < keys.length; i++) {
-            const key = keys[i];
-            const content = jsData[key];
-            // zip 添加所有的js 文件
-            zip.file(key, content);
-        }
+        zip.file('main.js', zipScript);
         // zip 添加production.json
         zip.file('production.json', JSON.stringify(data));
         // 归档
@@ -130,10 +148,10 @@ class Compiler {
             newProductionJSON['md5'] = targetMD5;
 
             // 保存production.json
-            const targetPath = path.normalize(projectInfo.productionPath + '/production.json');
+            const targetPath = projectInfo.productionJSONPath;
             fs.writeFileSync(targetPath, JSON.stringify(newProductionJSON));
 
-            const destinationPath = `${projectInfo.productionPath}${projectInfo.zipName}.zip`;
+            const destinationPath = Path.join(projectInfo.productionFolderPath,projectInfo.exportZipName+'.zip');
             fs.writeFile(destinationPath, content, function (err) {
                 if (err) {
                     console.log('zip包输出失败');
@@ -147,8 +165,7 @@ class Compiler {
     }
 
     mergeModules() {
-        const projectInfo = Projects.getDefaultProjectInfo();
-        const modulePaths = this.produceModulesInfo(projectInfo.projectFolderPath);
+        const modulePaths = this.produceModulesInfo(this.projectInfo.projectFolderPath);
         const modulesInfo = this.sortModulePaths(modulePaths);
 
         modulesInfo.cssModule.forEach((info) => {
@@ -176,7 +193,7 @@ class Compiler {
     produceModulesInfo(filePath) {
         let r = [];
         fs.readdirSync(filePath).map((v) => {
-            return path.normalize(filePath + path.sep + v);
+            return Path.join(filePath,v);
         }).forEach((subPath) => {
             if (fs.lstatSync(subPath).isDirectory()) {
                 r = r.concat(this.produceModulesInfo(subPath));
@@ -193,7 +210,7 @@ class Compiler {
             htmlModule: []
         };
         list.forEach((v) => {
-            const fileName = path.basename(v).split('.')[0];
+            const fileName = Path.basename(v).split('.')[0];
             const modules = {
                 fileName
             };
@@ -202,7 +219,7 @@ class Compiler {
                 r.cssModule.push(modules);
             }
             if (v.endsWith('.html')) {
-                if (v !== this.entryPath) {
+                if (v !== this.projectInfo.entryHTMLPath) {
                     r.htmlModule.push(modules);
                 }
             }

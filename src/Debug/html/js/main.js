@@ -14,12 +14,13 @@ const connectSocketPort = ()=>{
             const mobileState = info.mobileConnect ? "已连接" : "未连接"
             App.setMobileState(mobileState);
             App.setIPAddress(info.ipAddress);
-
+            App.projectFolderPaths = info.projectFolderPaths;
+            if(!App.statusPath.length){
+                App.statusPath = info.projectFolderPaths[0];
+            }
+            
             const projectNames = info.projectNames;
             App.setCompileProjectList(projectNames);
-
-            const zipNames = info.reloadZipNames;
-            App.setUniqueNameList(zipNames);
 
             if(info.scriptLog){
                 App.setScriptLog("清空中...");
@@ -45,14 +46,13 @@ const connectSocketPort = ()=>{
 const sendEventActionMessage = (code)=>{
     const info       = {}
     info.script      = editor.getValue();
-    info.projectName = App.selectedCompileFolderName;
-    info.zipName     = App.selectedUniqueName;
+    info.projectName = App.selectedFolderName;
     info.actionCode  = code;
+    info.compileOpinion = App.compileOpinion;
     WSSocket.emit(SocketEventNameAction, info);
 }
 
-let selectedUniqueNameFirstSet = false;
-let selectedFolderNameFirstSet = false;
+let selectedFolderNameMark = false;
 
 const createApp = () => {
     App = new Vue({
@@ -61,20 +61,12 @@ const createApp = () => {
             alert(text){
                 this.$Message.info(text);
             },
-            setUniqueNameList(list){
-                const r = Array.isArray(list) ? list : [];
-                this.uniqueNameList = r;
-                if(!selectedUniqueNameFirstSet){
-                    selectedUniqueNameFirstSet = true;
-                    this.selectedUniqueName = r.length ? r[0] : '暂无';
-                }
-            },
             setCompileProjectList(list) {
                 const r = Array.isArray(list) ? list : [];
-                this.compileProjectList = r;
-                if(!selectedFolderNameFirstSet){
-                    selectedFolderNameFirstSet = true;
-                    this.selectedCompileFolderName = r.length ? r[0] : '暂无';
+                this.projectList = list;
+                if(!selectedFolderNameMark){
+                    selectedFolderNameMark = true;
+                    this.selectedFolderName = r[0];
                 }
             },
             setCompilerLog(log){
@@ -87,27 +79,9 @@ const createApp = () => {
                 //设置ip地址
                 this.infos[0].data = value;
             },
-            setCurrentUniqueName(name) {
-                //设置当前的Unique
-                this.selectedUniqueName = name;
-                this.infos[1].data = name;
-            },
-            setCurrentCompileFolderName(name) {
-                //设置当前的编译
-                this.selectedCompileFolderName = name;
-                this.infos[2].data = name;
-            },
             setMobileState(state) {
                 //设置当前的state
-                this.infos[3].data = state;
-            },
-            didSelectedUniqueName() {
-                //选中回调
-                this.infos[1].data = this.selectedUniqueName;
-            },
-            didSelectedCompileProjectName() {
-                //选中回调
-                this.infos[2].data = this.selectedCompileFolderName;
+                this.infos[1].data = state;
             },
             runScript() {
                 sendEventActionMessage(2019);
@@ -118,34 +92,37 @@ const createApp = () => {
             compileCodes() {
                 sendEventActionMessage(2011);
             },
-            changeMobileAppName(){
-                sendEventActionMessage(2012);
-            },
             reloadApp(){
                 sendEventActionMessage(2013);
             },
             uploadZip(){
                 this.$Modal.confirm({
                     title: '确定要上传到测试环境吗？',
-                    content: `<p>即将编译后上传${this.selectedUniqueName}.zip</p>`,
+                    content: `<span>即将编译后上传<strong>${this.selectedFolderName}.zip</strong></span>`,
                     onOk: () => {
                         this.compilerLog = "";
                         sendEventActionMessage(2014);
                     }
                 });
+            },
+            didSelectedProjectList(index){
+                this.selectdProjectIndex = index;
+                this.selectedFolderName = this.projectList[index];
+                this.statusPath = this.projectFolderPaths[index];
             }
         },
         data: function () {
             return {
-                defaultUniqueName: "",
-                selectedUniqueName: "",
-                defaultCompileFolderName: "",
-                selectedCompileFolderName: "",
+                selectedFolderName: "",
                 compilerLog: "",
                 scriptLog: "",
-                uniqueNameList: [
-                ],
-                compileProjectList:[],
+                selectdProjectIndex:0,
+                statusPath:"",
+                compileOpinion:{
+                    zipJS:0,
+                },
+                projectFolderPaths:[],
+                projectList:[],
                 desc: [{
                         title: '信息',
                         key: 'desc'
@@ -153,23 +130,11 @@ const createApp = () => {
                     {
                         title: '状态',
                         key: 'data'
-                    }, {
-                        title: 'Action',
-                        key: 'action',
-                        slot: 'action',
                     }
                 ],
                 infos: [{
                         desc: '本机IP',
                         data: "脚本服务未启动"
-                    },
-                    {
-                        desc: '重载包名',
-                        data: "暂无"
-                    },
-                    {
-                        desc: '当前编译目录',
-                        data: "暂无"
                     },
                     {
                         desc: 'iPhone状态',
@@ -189,6 +154,22 @@ window.onload = () => {
     editor = monaco.editor.create(document.getElementById('container'), {
         value: `console.log("Hello world!");`,
         language: 'javascript'
+    });
+
+    monaco.languages.registerCompletionItemProvider('javascript', {
+        provideCompletionItems: () => {
+            return { 
+                suggestions: [
+                    {    
+                        label: 'Test',
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: 'getValue(${1:pattern})',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: '根据pattern描述的正则表达式，从数据项中获取匹配的字符串'
+                    }
+                ] 
+            }
+        }
     });
 
     // 连接服务器
